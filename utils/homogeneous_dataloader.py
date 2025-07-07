@@ -55,7 +55,8 @@ def load_homogeneous_cert_data(data_path="./data", method="undersampling_Reshybn
         # Optionally, filter the DataFrame:
         filtered_day = day[mask]
         filtered = filtered_day.drop(columns=['merge_key']).reset_index(drop=True)
-    elif method == "undersampling":
+    #undersampling_new is heterogeneous only, so we merge it with undersampling here    
+    elif method == "undersampling" or method == "undersampling_new":
         # Separate the data into two groups based on 'insider' value
         insider = day[day['insider'] != 0]
         normal = day[day['insider'] == 0]

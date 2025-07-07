@@ -8,7 +8,7 @@ import torch.nn.functional as F
 from torch_geometric.nn import to_hetero
 import os
 from torch_geometric.loader import ClusterData, ClusterLoader, NeighborLoader, HGTLoader, RandomNodeLoader
-from sklearn.metrics import precision_score, recall_score, f1_score ,accuracy_score, accuracy_score, classification_report
+from sklearn.metrics import precision_score, recall_score, f1_score ,accuracy_score, accuracy_score, classification_report, roc_auc_score, roc_curve, auc
 import csv
 from tqdm import trange
 from utils.homogeneous_dataloader import load_homogeneous_cert_data, device_sharing_relationship, email_communication_relationship, user_hierarchical_relationship, none_homogeneous_relationship
@@ -17,6 +17,7 @@ from utils.models import ResHybNet, EnhancedResHybNet, HetResHybnet
 from utils.utility import EarlyStopping, calculate_minibatch_params, adj_to_edge_index, last_day_of_month, pad_hetero_features
 from datetime import datetime
 import numpy as np
+import matplotlib.pyplot as plt
 import time
 import pickle
 from copy import deepcopy
@@ -39,7 +40,7 @@ parser = argparse.ArgumentParser(description='Graph Insider Threat Detection')
 # Data arguments
 parser.add_argument('--data_path', type=str, default='./data', help='Path to the dataset files')
 parser.add_argument('--version', type=str, default='r4.2', help='Version of the dataset')
-parser.add_argument('--method', type=str, choices=['undersampling', 'undersampling_Reshybnet', 'one_month', 'oversampling'], default='undersampling', help='Sampling method')
+parser.add_argument('--method', type=str, choices=['undersampling', 'undersampling_new', 'undersampling_Reshybnet', 'one_month', 'oversampling'], default='undersampling', help='Sampling method')
 parser.add_argument('--gnn_type', type=str, choices=['HGT', 'GAT', 'SAGE', 'all'], default='all', help='Type of GNN to use')
 
 # Training arguments
@@ -411,10 +412,12 @@ for conn_type in conns_key:
             if args.cluster:
                 all_test_preds = {ntype: [] for ntype in node_types}
                 all_test_labels = {ntype: [] for ntype in node_types}
+                all_test_probs = {ntype: [] for ntype in node_types}
                 val_loss_main = 0.0
                 for batch in test_loader:
                     data = batch.to(device)
                     out = model(data)
+                    probs_dict = {ntype: logits.cpu().exp()[:, 1] for ntype, logits in out.items()}
                     preds_dict = {ntype: logits.cpu().argmax(dim=1) for ntype, logits in out.items()}
                     y_dict = {ntype: data[ntype].y.cpu() for ntype in node_types}
                     mask_test_dict = {ntype: data[ntype].test_mask.cpu() for ntype in node_types}
@@ -432,6 +435,7 @@ for conn_type in conns_key:
                             continue
                         val_loss += loss.item()
                         valid_types_val += 1
+                        all_test_probs[ntype].append(probs_dict[ntype][mask_test])
                         all_test_preds[ntype].append(preds_dict[ntype][mask_test])
                         all_test_labels[ntype].append(y_true[mask_test])
                     if valid_types_val > 0:
@@ -451,9 +455,11 @@ for conn_type in conns_key:
                     f.write(f"Round {r} (Validation), Epoch {epoch}, Loss: {val_loss_main:.4f}\n")
                     for ntype in node_types:
                         if all_test_labels[ntype]:
+                            all_test_probs[ntype] = torch.cat(all_test_probs[ntype])
                             all_test_labels[ntype] = torch.cat(all_test_labels[ntype])
                             all_test_preds[ntype] = torch.cat(all_test_preds[ntype])
                         else:
+                            all_test_probs[ntype] = torch.tensor([]).float()
                             all_test_labels[ntype] = torch.tensor([]).long()
                             all_test_preds[ntype] = torch.tensor([]).long()
                         if all_test_labels[ntype].numel() > 0:
@@ -461,22 +467,37 @@ for conn_type in conns_key:
                             pre = precision_score(all_test_labels[ntype], all_test_preds[ntype], zero_division=0)
                             rec = recall_score(all_test_labels[ntype], all_test_preds[ntype], zero_division=0)
                             f1 = f1_score(all_test_labels[ntype], all_test_preds[ntype], zero_division=0)
+                            fpr, tpr, _ = roc_curve(all_test_labels[ntype].detach().cpu().numpy(), all_test_probs[ntype].detach().cpu().numpy())
+                            this_node_test_auc = auc(fpr, tpr)
+
+                            plt.figure()
+                            plt.plot(fpr, tpr, label=f'ROC curve (area = {this_node_test_auc:.2f})')
+                            plt.plot([0, 1], [0,1], 'k--', label='Random guess')
+                            plt.xlabel("False Positive Rate")
+                            plt.ylabel("True Positive Rate")
+                            plt.title(f"ROC Curve for Node Type: {ntype}")
+                            plt.legend()
+                            plt.savefig(os.path.join(result_dir, conn_type, f'ROC_Curve_{CNN}_{GNN}_{args.num_feat}_{RESIDUAL}_{ntype}_round{r}.png'))
+                            plt.close()
+                            
                             f.write(f"Node Type: {ntype}\n")
                             f.write(f"Report:\n{classification_report(all_test_labels[ntype], all_test_preds[ntype])}\n")
                             with open(perf_file, 'a', newline='') as pf:
                                 writer = csv.writer(pf)
                                 writer.writerow([
                                     f'{CNN}_{GNN}', f'feat_{args.num_feat}_{ntype}',
-                                    r, acc, pre, rec, f1, epoch
+                                    r, acc, pre, rec, f1, this_node_test_auc, epoch
                                 ])
             else:
                 data = ori_data.to(device)
                 out = model(data)
+                probs_dict = {ntype: logits.cpu().exp()[:, 1] for ntype, logits in out.items()}
                 preds_dict = {ntype: logits.cpu().argmax(dim=1) for ntype, logits in out.items()}
                 y_dict = {ntype: data[ntype].y.cpu() for ntype in node_types}
                 mask_dict = {ntype: data[ntype].test_mask.cpu() for ntype in node_types}
                 val_loss = 0.0
                 valid_types_val = 0
+                all_test_probs = {ntype: [] for ntype in node_types}
                 all_test_preds = {ntype: [] for ntype in node_types}
                 all_test_labels = {ntype: [] for ntype in node_types}
                 for ntype in node_types:
@@ -491,6 +512,7 @@ for conn_type in conns_key:
                         continue
                     val_loss += loss.item()
                     valid_types_val += 1
+                    all_test_probs[ntype].append(probs_dict[ntype][mask_test])
                     all_test_preds[ntype].append(preds_dict[ntype][mask_test])
                     all_test_labels[ntype].append(y_true[mask_test])
                 if valid_types_val > 0:
@@ -504,9 +526,11 @@ for conn_type in conns_key:
                     f.write(f"Round {r} (Validation), Epoch {epoch}, Loss: {val_loss:.4f}\n")
                     for ntype in node_types:
                         if all_test_labels[ntype]:
+                            all_test_probs[ntype] = torch.cat(all_test_probs[ntype])
                             all_test_labels[ntype] = torch.cat(all_test_labels[ntype])
                             all_test_preds[ntype] = torch.cat(all_test_preds[ntype])
                         else:
+                            all_test_probs[ntype] = torch.tensor([]).float()
                             all_test_labels[ntype] = torch.tensor([]).long()
                             all_test_preds[ntype] = torch.tensor([]).long()
                         if all_test_labels[ntype].numel() > 0:
@@ -514,13 +538,26 @@ for conn_type in conns_key:
                             pre = precision_score(all_test_labels[ntype], all_test_preds[ntype], zero_division=0)
                             rec = recall_score(all_test_labels[ntype], all_test_preds[ntype], zero_division=0)
                             f1 = f1_score(all_test_labels[ntype], all_test_preds[ntype], zero_division=0)
+                            fpr, tpr, _ = roc_curve(all_test_labels[ntype].detach().cpu().numpy(), all_test_probs[ntype].detach().cpu().numpy())
+                            this_node_test_auc = auc(fpr, tpr)
+
+                            plt.figure()
+                            plt.plot(fpr, tpr, label=f'ROC curve (area = {this_node_test_auc:.2f})')
+                            plt.plot([0, 1], [0,1], 'k--', label='Random guess')
+                            plt.xlabel("False Positive Rate")
+                            plt.ylabel("True Positive Rate")
+                            plt.title(f"ROC Curve for Node Type: {ntype}")
+                            plt.legend()
+                            plt.savefig(os.path.join(result_dir, conn_type, f'ROC_Curve_{CNN}_{GNN}_{args.num_feat}_{RESIDUAL}_{ntype}_round{r}.png'))
+                            plt.close()
+
                             f.write(f"Node Type: {ntype}\n")
                             f.write(f"Report:\n{classification_report(all_test_labels[ntype], all_test_preds[ntype])}\n")
                             with open(perf_file, 'a', newline='') as pf:
                                 writer = csv.writer(pf)
                                 writer.writerow([
                                     f'{CNN}_{GNN}', f'feat_{args.num_feat}_{ntype}',
-                                    r, acc, pre, rec, f1, epoch
+                                    r, acc, pre, rec, f1, this_node_test_auc, epoch
                                 ])
 
             # Cleanup

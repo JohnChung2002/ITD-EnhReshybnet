@@ -8,7 +8,7 @@ import torch.nn.functional as F
 from torch_geometric.nn import to_hetero
 import os
 from torch_geometric.loader import ClusterData, ClusterLoader
-from sklearn.metrics import precision_score, recall_score, f1_score ,accuracy_score, accuracy_score, classification_report
+from sklearn.metrics import precision_score, recall_score, f1_score ,accuracy_score, accuracy_score, classification_report, roc_auc_score, roc_curve, auc
 import csv
 from tqdm import trange
 from utils.homogeneous_dataloader import load_homogeneous_cert_data, device_sharing_relationship, email_communication_relationship, user_hierarchical_relationship, none_homogeneous_relationship
@@ -17,6 +17,7 @@ from utils.models import ResHybNet, EnhancedResHybNet
 from utils.utility import EarlyStopping, calculate_minibatch_params, adj_to_edge_index, last_day_of_month, pad_hetero_features
 from datetime import datetime
 import numpy as np
+import matplotlib.pyplot as plt
 import time
 import pickle
 from copy import deepcopy
@@ -40,7 +41,7 @@ parser = argparse.ArgumentParser(description='Graph Insider Threat Detection')
 parser.add_argument('--data_path', type=str, default='./data', help='Path to the dataset files')
 parser.add_argument('--version', type=str, default='r4.2', help='Version of the dataset')
 parser.add_argument('--graph_type', type=str, choices=['Heterogeneous', 'Homogeneous'], default='Heterogeneous', help='Type of graph')
-parser.add_argument('--method', type=str, choices=['undersampling', 'undersampling_Reshybnet', 'one_month', 'oversampling'], default='undersampling', help='Sampling method')
+parser.add_argument('--method', type=str, choices=['undersampling', 'undersampling_new', 'undersampling_Reshybnet', 'one_month', 'oversampling'], default='undersampling', help='Sampling method')
 
 # Model arguments
 parser.add_argument('--model_type', type=str, choices=['ResHybNet', 'EnhancedResHybNet'], default='EnhancedResHybNet', help='Type of model to use')
@@ -250,8 +251,6 @@ for conn_type in conns_key:
                 (ori_data.edge_index, directed), dim=1
             )
             ori_data.x = ori_data.x.float()
-            del ori_data.node_type
-            del ori_data.edge_type
             del directed
             del edges 
             del conns[conn_type]
@@ -349,6 +348,10 @@ for conn_type in conns_key:
 
         # if args.resume:
         start_round = args.resume_round if args.resume else 0
+
+        if args.graph_type == 'Heterogeneous':
+            unique_node_types = ori_data.node_type.unique().tolist()
+            node_type_mapping = dict(zip(unique_node_types, graph.node_types))
         
         for r in trange(start_round, args.round):
             train_loss_s = []
@@ -460,10 +463,12 @@ for conn_type in conns_key:
                     optimizer.step()
                     train_loss_s.append(loss.item())
 
+                    # if args.graph_type == 'Heterogeneous':
+                    # else:
                     with open(f"{classification_report_path}/{conn_type}_CNN_{GNN}_{args.num_feat}_train.txt", 'a+') as f:
                         f.write(f"Round {r} (Training), Epoch {epoch}, Loss: {loss.item()}\n")
                         f.write(f"Report: \n{classification_report(true_y, pred_y)}")
-                    
+                
                     model.eval()
                     out = model(data)
                     _, out1 = out.max(dim=1)
@@ -484,50 +489,126 @@ for conn_type in conns_key:
             model.load_state_dict(torch.load(best_model_path))
             model.eval()
 
-            if args.cluster:
-                final_loss_total = 0.0
-                final_preds = []
-                final_labels = []
-                with torch.no_grad():
-                    for batch in test_loader:
-                        batch = batch.to(device)
-                        out = model(batch)
-                        loss_batch = F.nll_loss(out[batch.test_mask.bool()], batch.y[batch.test_mask.bool()].long())
-                        final_loss_total += loss_batch.item()
-                        _, out1 = out.max(dim=1)
-                        preds_batch = torch.masked_select(out1, batch.test_mask.bool()).tolist()
-                        labels_batch = batch.y[batch.test_mask.bool()].tolist()
-                        final_preds.extend(preds_batch)
-                        final_labels.extend(labels_batch)
-                final_loss = final_loss_total / len(test_loader)
-            else:
-                out = model(data)
-                _, out1 = out.max(dim=1)
-                final_preds = torch.masked_select(out1, data.test_mask.bool()).tolist()
-                final_labels = data.y[data.test_mask.bool()].tolist()
-                final_loss = F.nll_loss(out[data.test_mask.bool()], data.y[data.test_mask.bool()].long()).item()
-                
-            test_acc = accuracy_score(final_labels, final_preds)
-            test_pre = precision_score(final_labels, final_preds)
-            test_rec = recall_score(final_labels, final_preds)
-            test_f1 = f1_score(final_labels, final_preds)
+            with torch.no_grad():
 
-            print(f'Best model testing performance for round {r}:', test_acc, test_pre, test_rec, test_f1)
-            
-            with open(f"{classification_report_path}/{conn_type}_CNN_{GNN}_{args.num_feat}_validate.txt", 'a+') as f:
-                f.write(f"Round {r} (Validation), Epoch {epoch}, Loss {final_loss}\n")
-                f.write(f"Report: \n{classification_report(final_labels, final_preds)}")
+                if args.cluster:
+                    if args.graph_type == 'Heterogeneous':
+                        final_loss_total = 0.0
+                        final_preds = {}
+                        final_labels = {}
+                        final_probs = {}
+                        
+                        for batch in test_loader:
+                            batch = batch.to(device)
+                            out = model(batch)
+                            for key in node_type_mapping:
+                                node_mask = (batch.node_type == key) & batch.test_mask.bool()
+                                final_probs.setdefault(key, []).extend(out.exp()[:, 1][node_mask].tolist())
+                                loss_batch = F.nll_loss(out[node_mask], batch.y[node_mask].long())
+                                final_loss_total += loss_batch.item()
+                                _, out1 = out.max(dim=1)
+                                preds_batch = torch.masked_select(out1, node_mask).tolist()
+                                labels_batch = batch.y[node_mask].tolist()
+                                final_preds.setdefault(key, []).extend(preds_batch)
+                                final_labels.setdefault(key, []).extend(labels_batch)
+                        final_loss = final_loss_total / len(test_loader)
+                    else:
+                        final_loss_total = 0.0
+                        final_preds = []
+                        final_labels = []
+                        final_probs = []
+                        
+                        for batch in test_loader:
+                            batch = batch.to(device)
+                            out = model(batch)
+                            final_probs.extend(out.exp()[:, 1][batch.test_mask.bool()].tolist())
+                            loss_batch = F.nll_loss(out[batch.test_mask.bool()], batch.y[batch.test_mask.bool()].long())
+                            final_loss_total += loss_batch.item()
+                            _, out1 = out.max(dim=1)
+                            preds_batch = torch.masked_select(out1, batch.test_mask.bool()).tolist()
+                            labels_batch = batch.y[batch.test_mask.bool()].tolist()
+                            final_preds.extend(preds_batch)
+                            final_labels.extend(labels_batch)
+                        final_loss = final_loss_total / len(test_loader)
+                else:
+                    if args.graph_type == 'Heterogeneous':
+                        out = model(data)
+                        # mask to get only test_node and nodetype
+                        final_probs = {}
+                        final_preds = {}
+                        final_labels = {}
+                        final_loss = 0.0
+                        for key in node_type_mapping:
+                            node_mask = (data.node_type == key) & data.test_mask.bool()
+                            final_probs[key] = out.exp()[:, 1][node_mask].tolist()
+                            _, out1 = out.max(dim=1)
+                            final_preds[key] = torch.masked_select(out1, node_mask).tolist()
+                            final_labels[key] = data.y[node_mask].tolist()
+                            final_loss += F.nll_loss(out[node_mask], data.y[node_mask].long()).item() 
+                        final_loss /= len(node_type_mapping)
+                    else:
+                        out = model(data)
+                        final_probs = out.exp()[:, 1][data.test_mask.bool()].tolist()
+                        _, out1 = out.max(dim=1)
+                        final_preds = torch.masked_select(out1, data.test_mask.bool()).tolist()
+                        final_labels = data.y[data.test_mask.bool()].tolist()
+                        final_loss = F.nll_loss(out[data.test_mask.bool()], data.y[data.test_mask.bool()].long()).item()
                 
-            with open(perform_file, 'a', newline='') as f:
-                writer = csv.writer(f)
-                my_list = [f'{CNN}_{GNN}', f'feat_{args.num_feat}', r, test_acc, test_pre, test_rec, test_f1, epoch]
-                writer.writerow(my_list)
+            if args.graph_type == 'Heterogeneous':
+                with open(f"{classification_report_path}/{conn_type}_CNN_{GNN}_{args.num_feat}_validate.txt", 'a+') as file1:
+                    file1.write(f"Round {r} (Validation), Epoch {epoch}, Loss {final_loss}\n")
+                    for key in node_type_mapping:
+                        file1.write(f"Node type: {node_type_mapping[key]}\n")
+                        file1.write(f"Report: \n{classification_report(final_labels[key], final_preds[key])}\n")
+                        this_node_acc = accuracy_score(final_labels[key], final_preds[key])
+                        this_node_pre = precision_score(final_labels[key], final_preds[key])
+                        this_node_rec = recall_score(final_labels[key], final_preds[key])
+                        this_node_f1 = f1_score(final_labels[key], final_preds[key])
+                        fpr, tpr, _ = roc_curve(final_labels[key], final_probs[key])
+                        this_node_auc = auc(fpr, tpr)
+
+                        # plot ROC curve
+                        plt.figure()
+                        plt.plot(fpr, tpr, label=f'ROC curve (area = {this_node_auc:.2f})')
+                        plt.plot([0, 1], [0,1], 'k--', label='Random guess')
+                        plt.xlabel("False Positive Rate")
+                        plt.ylabel("True Positive Rate")
+                        plt.title(f"ROC Curve for Node Type: {node_type_mapping[key]}")
+                        plt.legend()
+                        plt.savefig(os.path.join(result_dir, conn_type, f'ROC_Curve_{CNN}_{GNN}_{args.num_feat}_{RESIDUAL}_{node_type_mapping[key]}_round{r}.png'))
+                        plt.close()
+
+                        print(f'Best model testing performance for round {r}, node type {node_type_mapping[key]}:', 
+                                this_node_acc, this_node_pre, this_node_rec, this_node_f1, this_node_auc)
+                        with open(perform_file, 'a', newline='') as f:
+                            writer = csv.writer(f)
+                            my_list = [f'{CNN}_{GNN}', f'feat_{args.num_feat}_{node_type_mapping[key]}', r, this_node_acc, this_node_pre, this_node_rec, this_node_f1, this_node_auc, epoch]
+                            writer.writerow(my_list)
+            else:
+                test_acc = accuracy_score(final_labels, final_preds)
+                test_pre = precision_score(final_labels, final_preds)
+                test_rec = recall_score(final_labels, final_preds)
+                test_f1 = f1_score(final_labels, final_preds)
+                test_auc = roc_auc_score(final_labels, final_preds)
+
+                print(f'Best model testing performance for round {r}:', test_acc, test_pre, test_rec, test_f1, test_auc)
+                
+                with open(f"{classification_report_path}/{conn_type}_CNN_{GNN}_{args.num_feat}_validate.txt", 'a+') as f:
+                    f.write(f"Round {r} (Validation), Epoch {epoch}, Loss {final_loss}\n")
+                    f.write(f"Report: \n{classification_report(final_labels, final_preds)}")
+                
+                with open(perform_file, 'a', newline='') as f:
+                    writer = csv.writer(f)
+                    my_list = [f'{CNN}_{GNN}', f'feat_{args.num_feat}', r, test_acc, test_pre, test_rec, test_f1, test_auc, epoch]
+                    writer.writerow(my_list)
+
             print('Finished round:', r)
 
-            del train_cluster_data
-            del train_loader
-            del test_cluster_data
-            del test_loader
+            if args.cluster:
+                del train_cluster_data
+                del train_loader
+                del test_cluster_data
+                del test_loader
             
             gc.collect()
             if torch.cuda.is_available():

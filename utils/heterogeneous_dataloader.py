@@ -3,6 +3,146 @@ from tqdm import tqdm
 import pandas as pd
 import pickle
 
+def get_overall_distribution():
+    return {
+        "2010-01": {
+            "device": {"total": 26101, "insider": 0},
+            "email":  {"total": 162649, "insider": 0},
+            "file":   {"total": 28844, "insider": 0},
+            "http":   {"total": 1765355, "insider": 0},
+            "logon":  {"total": 53857, "insider": 0},
+            "total":  {"total": 2036806, "insider": 0},
+        },
+        "2010-02": {
+            "device": {"total": 25048, "insider": 0},
+            "email":  {"total": 161178, "insider": 0},
+            "file":   {"total": 27748, "insider": 0},
+            "http":   {"total": 1746095, "insider": 0},
+            "logon":  {"total": 53093, "insider": 0},
+            "total":  {"total": 2013162, "insider": 0},
+        },
+        "2010-03": {
+            "device": {"total": 28608, "insider": 0},
+            "email":  {"total": 184075, "insider": 0},
+            "file":   {"total": 31166, "insider": 0},
+            "http":   {"total": 1989547, "insider": 0},
+            "logon":  {"total": 60645, "insider": 0},
+            "total":  {"total": 2294041, "insider": 0},
+        },
+        "2010-04": {
+            "device": {"total": 26121, "insider": 0},
+            "email":  {"total": 167445, "insider": 0},
+            "file":   {"total": 28432, "insider": 0},
+            "http":   {"total": 1815840, "insider": 0},
+            "logon":  {"total": 55110, "insider": 0},
+            "total":  {"total": 2092948, "insider": 0},
+        },
+        "2010-05": {
+            "device": {"total": 25190, "insider": 0},
+            "email":  {"total": 159793, "insider": 0},
+            "file":   {"total": 27268, "insider": 0},
+            "http":   {"total": 1727506, "insider": 0},
+            "logon":  {"total": 52552, "insider": 0},
+            "total":  {"total": 1992309, "insider": 0},
+        },
+        "2010-06": {
+            "device": {"total": 27043, "insider": 8},
+            "email":  {"total": 172606, "insider": 24},
+            "file":   {"total": 29006, "insider": 2},
+            "http":   {"total": 1865926, "insider": 202},
+            "logon":  {"total": 56714, "insider": 12},
+            "total":  {"total": 2151295, "insider": 248},
+        },
+        "2010-07": {
+            "device": {"total": 26244, "insider": 188},
+            "email":  {"total": 164958, "insider": 88},
+            "file":   {"total": 28208, "insider": 2},
+            "http":   {"total": 1781064, "insider": 724},
+            "logon":  {"total": 53832, "insider": 35},
+            "total":  {"total": 2054306, "insider": 1037},
+        },
+        "2010-08": {
+            "device": {"total": 27207, "insider": 487},
+            "email":  {"total": 169664, "insider": 77},
+            "file":   {"total": 29068, "insider": 1},
+            "http":   {"total": 1832661, "insider": 601},
+            "logon":  {"total": 55362, "insider": 19},
+            "total":  {"total": 2113962, "insider": 1185},
+        },
+        "2010-09": {
+            "device": {"total": 25426, "insider": 466},
+            "email":  {"total": 160232, "insider": 49},
+            "file":   {"total": 27905, "insider": 1},
+            "http":   {"total": 1730991, "insider": 383},
+            "logon":  {"total": 52168, "insider": 24},
+            "total":  {"total": 1996722, "insider": 923},
+        },
+        "2010-10": {
+            "device": {"total": 24106, "insider": 280},
+            "email":  {"total": 158394, "insider": 48},
+            "file":   {"total": 26404, "insider": 1},
+            "http":   {"total": 1712092, "insider": 401},
+            "logon":  {"total": 51682, "insider": 31},
+            "total":  {"total": 1972678, "insider": 761},
+        },
+        "2010-11": {
+            "device": {"total": 22546, "insider": 280},
+            "email":  {"total": 149511, "insider": 45},
+            "file":   {"total": 25088, "insider": 1},
+            "http":   {"total": 1616839, "insider": 377},
+            "logon":  {"total": 48389, "insider": 11},
+            "total":  {"total": 1862373, "insider": 714},
+        },
+        "2010-12": {
+            "device": {"total": 22105, "insider": 300},
+            "email":  {"total": 147922, "insider": 29},
+            "file":   {"total": 25322, "insider": 1},
+            "http":   {"total": 1594414, "insider": 201},
+            "logon":  {"total": 47207, "insider": 13},
+            "total":  {"total": 1836970, "insider": 544},
+        },
+        "2011-01": {
+            "device": {"total": 22462, "insider": 112},
+            "email":  {"total": 151360, "insider": 32},
+            "file":   {"total": 24780, "insider": 0},
+            "http":   {"total": 1637419, "insider": 333},
+            "logon":  {"total": 48321, "insider": 6},
+            "total":  {"total": 1884342, "insider": 483},
+        },
+        "2011-02": {
+            "device": {"total": 21221, "insider": 272},
+            "email":  {"total": 142399, "insider": 38},
+            "file":   {"total": 23521, "insider": 0},
+            "http":   {"total": 1538898, "insider": 384},
+            "logon":  {"total": 45709, "insider": 9},
+            "total":  {"total": 1771748, "insider": 703},
+        },
+        "2011-03": {
+            "device": {"total": 23867, "insider": 278},
+            "email":  {"total": 161438, "insider": 25},
+            "file":   {"total": 26633, "insider": 0},
+            "http":   {"total": 1745157, "insider": 217},
+            "logon":  {"total": 51521, "insider": 2},
+            "total":  {"total": 2008616, "insider": 522},
+        },
+        "2011-04": {
+            "device": {"total": 20809, "insider": 114},
+            "email":  {"total": 140296, "insider": 5},
+            "file":   {"total": 23526, "insider": 1},
+            "http":   {"total": 1512829, "insider": 7},
+            "logon":  {"total": 44403, "insider": 6},
+            "total":  {"total": 1741863, "insider": 133},
+        },
+        "2011-05": {
+            "device": {"total": 11276, "insider": 0},
+            "email":  {"total": 76059, "insider": 0},
+            "file":   {"total": 12662, "insider": 0},
+            "http":   {"total": 821790, "insider": 0},
+            "logon":  {"total": 24294, "insider": 0},
+            "total":  {"total": 946081, "insider": 0},
+        }
+    }
+
 def load_heterogeneous_cert_data(data_path="./data", method='undersampling_Reshybnet', version='r4.2', year=None, month=None):
     with open(f"{data_path}/users.csv", "r") as f:
         users = pd.read_csv(f)
@@ -31,6 +171,36 @@ def load_heterogeneous_cert_data(data_path="./data", method='undersampling_Reshy
                     continue
 
                 df['merge_key'] = df['user_id'].astype(str) + '_' + df['key_date'].astype(str)
+        
+                temp_activity_df = pd.read_csv(f"{data_path}/{year}-{month}-filled.csv")
+                temp_activity_df['key_date'] = temp_activity_df['timestamp'].apply(lambda ts: str(datetime.fromtimestamp(ts).date()))
+                temp_activity_df['merge_key'] = temp_activity_df['user'].astype(str) + '_' + temp_activity_df['key_date'].astype(str)
+
+                mask = temp_activity_df['merge_key'].isin(df['merge_key'])
+                filtered_df = temp_activity_df[mask]
+                activity_df = pd.concat([activity_df, filtered_df])
+
+    elif method == 'undersampling_new':
+        with open(f"{data_path}/day{version}.csv", "r") as f:
+            day = pd.read_csv(f)
+        day['key_date'] = day['starttime'].apply(lambda ts: str(datetime.fromtimestamp(ts).date()))
+
+        # Separate the data into two groups based on 'insider' value
+        insider = day[day['insider'] != 0]
+        normal = day[day['insider'] == 0]
+
+        sampled_insider_1 = insider.sample(n=966, random_state=42)
+        sampled_insider_0 = normal.sample(n=50, random_state=42)
+
+        filtered = pd.concat([sampled_insider_1, sampled_insider_0], ignore_index=True).reset_index(drop=True)
+
+        for year in year_month:
+            for month in year_month[year]:
+                df = filtered[filtered['key_date'].str.startswith(f'{year}-{month}')]
+                if df.empty:
+                    continue
+
+                df['merge_key'] = df['user'].astype(str) + '_' + df['key_date'].astype(str)
         
                 temp_activity_df = pd.read_csv(f"{data_path}/{year}-{month}-filled.csv")
                 temp_activity_df['key_date'] = temp_activity_df['timestamp'].apply(lambda ts: str(datetime.fromtimestamp(ts).date()))
