@@ -4,7 +4,7 @@ import torch.nn.functional as F
 from torch_geometric.nn import GCNConv, GATConv, SAGEConv, HeteroConv, HGTConv
 from torch_geometric.transforms import AddLaplacianEigenvectorPE
 from torch_geometric.nn.models import Node2Vec
-from utils.heterogeneous_dataloader import get_edges_dict
+# from utils.heterogeneous_dataloader import get_edges_dict
 import time
 
 class ResHybNet(nn.Module):
