@@ -11,7 +11,7 @@ from torch_geometric.loader import ClusterData, ClusterLoader
 from sklearn.metrics import precision_score, recall_score, f1_score ,accuracy_score, accuracy_score, classification_report, roc_auc_score, roc_curve, auc
 import csv
 from tqdm import trange
-from utils.homogeneous_dataloader import load_homogeneous_cert_data, device_sharing_relationship, email_communication_relationship, user_hierarchical_relationship, none_homogeneous_relationship
+from utils.dataloader import load_homogeneous_cert_data, device_sharing_relationship, email_communication_relationship, user_hierarchical_relationship, none_homogeneous_relationship
 # from utils.heterogeneous_dataloader import load_heterogeneous_cert_data, none_heterogeneous_edges, process_sequential_edges, process_log2vec_edges
 from utils.models import ResHybNet, EnhancedResHybNet
 from utils.utility import EarlyStopping, calculate_minibatch_params, adj_to_edge_index, last_day_of_month, pad_hetero_features
